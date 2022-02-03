@@ -3,14 +3,14 @@ import gzip
 import numpy as np 
 import torch
 import torch.nn as nn
+from torch import optim, tensor
 from tqdm import trange
+import matplotlib.pyplot as plt
 
 # load data
 parse = lambda file: np.frombuffer(gzip.open(file).read(), dtype=np.uint8).copy()
 X_train = parse("data/train-images-idx3-ubyte.gz")[0x10:].reshape((-1, 28, 28))
 Y_train = parse("data/train-labels-idx1-ubyte.gz")[8:]
-X_test = parse("data/t10k-images-idx3-ubyte.gz")[0x10:].reshape((-1, 28, 28))
-Y_test = parse("data/t10k-labels-idx1-ubyte.gz")[8:]
 
 class Generator(nn.Module):
   def __init__(self):
@@ -39,12 +39,13 @@ class Discriminator(nn.Module):
       nn.LeakyReLU(0.2, inplace=True),
       nn.Linear(512, 256),
       nn.LeakyReLU(0.2, inplace=True),
-      nn.Linear(256, 2),
-      nn.LogSoftmax(dim=1)
+      nn.Linear(256, 1),
+      #nn.LogSoftmax(dim=1)
+      nn.Sigmoid()
     )
 
   def forward(self, x):
-    return self.layers(x)
+    return self.layers(x).reshape(-1)
 
 BS = 512 
 k = 1 
@@ -54,21 +55,49 @@ n_steps = int(X_train.shape[0]/BS)
 generator = Generator()
 discriminator = Discriminator()
 
-optim_g = torch.optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-optim_d = torch.optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-ds_noise = torch.tensor(np.random.randn(64, 128).astype(np.float32), requires_grad=False)
+optim_g = optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+optim_d = optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+ds_noise = tensor(np.random.randn(64, 128).astype(np.float32), requires_grad=False)
 
 def generator_batch():
   samp = np.random.randint(0, X_train.shape[0], size=(BS))
   image = X_train[samp].reshape(-1, 28*28).astype(np.float32)/255.
   image = (image - 0.5)/0.5
-  return torch.tensor(image)
+  return tensor(image)
 
+def real_label(bs):
+  return torch.full((bs,), 1).float()
+
+def fake_label(bs):
+  return torch.full((bs,), 0).float()
+
+loss_function = nn.BCELoss()
 def train_discriminator(optimizer, real_data, fake_data):
-  pass
+  real_labels = real_label(BS)
+  fake_labels = fake_label(BS)
+
+  optimizer.zero_grad()
+
+  real_out = discriminator(real_data)
+  #print(real_out.shape)
+  real_loss = loss_function(real_out, real_labels)
+
+  fake_out = discriminator(fake_data)
+  fake_loss = loss_function(fake_out, fake_labels)
+
+  real_loss.backward() 
+  fake_loss.backward()
+  optimizer.step()
+  return real_loss.item() + fake_loss.item()
 
 def train_generator(optimizer, fake_data):
-  pass
+  y = real_label(BS) 
+  optimizer.zero_grad()
+  out = discriminator(fake_data)
+  loss = loss_function(out, y)
+  loss.backward()
+  optimizer.step()
+  return loss.item()
 
 for epoch in (t := trange(epochs)):
   loss_g = 0
@@ -76,13 +105,13 @@ for epoch in (t := trange(epochs)):
   for i in range(n_steps):
     # train discriminator
     real_data = generator_batch()
-    noise = torch.tensor(np.random.rand(BS, 128)).float()
+    noise = tensor(np.random.rand(BS, 128)).float()
     fake_data = generator(noise).detach()
-    loss_d_step = train_discriminator(optim_d, real_fake, fake_data)
+    loss_d_step = train_discriminator(optim_d, real_data, fake_data)
     loss_d += loss_d_step
 
     # train generator
-    noise = torch.tensor(np.random.rand(BS, 128)).float()
+    noise = tensor(np.random.rand(BS, 128)).float()
     fake_data = generator(noise).detach()
     loss_g_step = train_generator(optim_g, fake_data)
     loss_g += loss_g_step
