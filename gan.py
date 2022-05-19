@@ -79,7 +79,6 @@ def train_discriminator(optimizer, real_data, fake_data):
   optimizer.zero_grad()
 
   real_out = discriminator(real_data)
-  #print(real_out.shape)
   real_loss = loss_function(real_out, real_labels)
 
   fake_out = discriminator(fake_data)
@@ -99,6 +98,7 @@ def train_generator(optimizer, fake_data):
   optimizer.step()
   return loss.item()
 
+losses_g, losses_d = [], []
 for epoch in (t := trange(epochs)):
   loss_g = 0
   loss_d = 0
@@ -125,5 +125,9 @@ for epoch in (t := trange(epochs)):
 
   epoch_loss_g = loss_g / n_steps
   epoch_loss_d = loss_d / n_steps
+  losses_g.append(epoch_loss_g)
+  losses_d.append(epoch_loss_d)
   t.set_description("epoch loss_g %.2f loss_d %.2f" % (epoch_loss_g, epoch_loss_d))
 
+plt.plot(epoch_loss_g)
+plt.plot(epoch_loss_d)
