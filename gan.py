@@ -18,11 +18,11 @@ class Generator(nn.Module):
     super(Generator, self).__init__()
     self.layers = nn.Sequential(
       nn.Linear(128, 256),
-      nn.LeakyReLU(0.2, inplace=True),
+      nn.LeakyReLU(0.2, inplace=False),
       nn.Linear(256, 512),
-      nn.LeakyReLU(0.2, inplace=True),
+      nn.LeakyReLU(0.2, inplace=False),
       nn.Linear(512, 1024),
-      nn.LeakyReLU(0.2, inplace=True),
+      nn.LeakyReLU(0.2, inplace=False),
       nn.Linear(1024, 784),
       nn.Tanh()
     )
@@ -35,18 +35,21 @@ class Discriminator(nn.Module):
     super(Discriminator, self).__init__()
     self.layers = nn.Sequential( 
       nn.Linear(784, 1024),
-      nn.LeakyReLU(0.2, inplace=True),
+      nn.LeakyReLU(0.2, inplace=False),
+      nn.Dropout(0.3),
       nn.Linear(1024, 512),
-      nn.LeakyReLU(0.2, inplace=True),
+      nn.LeakyReLU(0.2, inplace=False),
+      nn.Dropout(0.3),
       nn.Linear(512, 256),
-      nn.LeakyReLU(0.2, inplace=True),
-      nn.Linear(256, 1),
-      #nn.LogSoftmax(dim=1)
-      nn.Sigmoid()
+      nn.LeakyReLU(0.2, inplace=False),
+      nn.Dropout(0.3),
+      nn.Linear(256, 2),
+      nn.LogSoftmax(dim=1)
+      #nn.Sigmoid()
     )
 
   def forward(self, x):
-    return self.layers(x).reshape(-1)
+    return self.layers(x)#.reshape(-1)
 
 BS = 512 
 k = 1 
@@ -55,6 +58,9 @@ n_steps = int(X_train.shape[0]/BS)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("device: ", device)
+
+output_dir = "out"
+os.makedirs(output_dir, exist_ok=True)
 
 generator = Generator().to(device)
 discriminator = Discriminator().to(device)
@@ -70,10 +76,18 @@ def generator_batch():
   return tensor(image).to(device)
 
 def real_label(bs):
-  return torch.full((bs,), 1).float().to(device)
+  #y = torch.full((bs,2), (0,-2)).float().to(device)
+  y = np.zeros((bs,2), dtype=np.float32)
+  y[:,1] = -2
+  #print("real label", y.shape, y)
+  return tensor(y).to(device)
 
 def fake_label(bs):
-  return torch.full((bs,), 0).float().to(device)
+  #y = torch.full((bs,2), 0).float().to(device)
+  y = np.zeros((bs,2), dtype=np.float32)
+  y[:,0] = -2
+  #print("fake label", y.shape, y)
+  return tensor(y).to(device)
 
 loss_function = nn.BCELoss()
 def train_discriminator(optimizer, real_data, fake_data):
@@ -82,46 +96,50 @@ def train_discriminator(optimizer, real_data, fake_data):
 
   optimizer.zero_grad()
 
+  #print("real data", real_data.shape, real_data)
   real_out = discriminator(real_data)
-  real_loss = loss_function(real_out, real_labels)
+  print("discrim real out", real_out.shape, real_out)
+  #real_loss = loss_function(real_out, real_labels)
+  real_loss = (real_out * real_labels).mean()
 
   fake_out = discriminator(fake_data)
-  fake_loss = loss_function(fake_out, fake_labels)
+  #fake_loss = loss_function(fake_out, fake_labels)
+  fake_loss = (fake_out * fake_labels).mean()
 
   real_loss.backward() 
   fake_loss.backward()
   optimizer.step()
+  #print(real_loss.item(), fake_loss.item())
   return real_loss.item() + fake_loss.item()
 
 def train_generator(optimizer, fake_data):
   y = real_label(BS) 
   optimizer.zero_grad()
   out = discriminator(fake_data)
-  loss = loss_function(out, y)
+  #loss = loss_function(out, y)
+  loss = (out * y).mean() 
   loss.backward()
   optimizer.step()
   return loss.item()
-
-output_dir = "out"
-if not os.path.exists(output_dir):
-  os.mkdir(output_dir)
 
 losses_g, losses_d = [], []
 for epoch in (t := trange(epochs)):
   loss_g = 0
   loss_d = 0
   for i in range(n_steps):
-    # train discriminator
-    real_data = generator_batch()
-    noise = tensor(np.random.rand(BS, 128)).float().to(device)
-    fake_data = generator(noise).detach()
-    loss_d_step = train_discriminator(optim_d, real_data, fake_data)
-    loss_d += loss_d_step
-
+    for step in range(k):
+      # train discriminator
+      real_data = generator_batch()
+      noise = tensor(np.random.rand(BS, 128)).float().to(device)
+      fake_data = generator(noise).detach()
+      loss_d_step = train_discriminator(optim_d, real_data, fake_data)
+      print("discriminator loss", loss_d_step)
+      loss_d += loss_d_step
     # train generator
     noise = tensor(np.random.rand(BS, 128)).float().to(device)
     fake_data = generator(noise).detach()
     loss_g_step = train_generator(optim_g, fake_data)
+    print("generator loss", loss_g_step)
     loss_g += loss_g_step
   
   fake_images = generator(ds_noise).detach()
