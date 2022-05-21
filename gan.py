@@ -18,11 +18,11 @@ class Generator(nn.Module):
     super(Generator, self).__init__()
     self.layers = nn.Sequential(
       nn.Linear(128, 256),
-      nn.LeakyReLU(0.2, inplace=False),
+      nn.LeakyReLU(0.2),
       nn.Linear(256, 512),
-      nn.LeakyReLU(0.2, inplace=False),
+      nn.LeakyReLU(0.2),
       nn.Linear(512, 1024),
-      nn.LeakyReLU(0.2, inplace=False),
+      nn.LeakyReLU(0.2),
       nn.Linear(1024, 784),
       nn.Tanh()
     )
@@ -80,8 +80,9 @@ class Discriminator(nn.Module):
 if __name__ == "__main__":
   BS = 512
   k = 1 
-  epochs = 8
+  epochs = 50 #300
   n_steps = int(X_train.shape[0]/BS)
+  print(n_steps)
 
   device = 'cuda' if torch.cuda.is_available() else 'cpu'
   print("device: ", device)
@@ -103,20 +104,17 @@ if __name__ == "__main__":
     return tensor(image).to(device)
 
   def real_label(bs):
-    #y = torch.full((bs,2), (0,-2)).float().to(device)
     y = np.zeros((bs,2), dtype=np.float32)
     y[:,1] = -2
     #print("real label", y.shape, y)
     return tensor(y).to(device)
 
   def fake_label(bs):
-    #y = torch.full((bs,2), 0).float().to(device)
     y = np.zeros((bs,2), dtype=np.float32)
-    y[:,0] = -2
+    y[:,0] = -2 #-1.98789 
     #print("fake label", y.shape, y)
     return tensor(y).to(device)
 
-  loss_function = nn.BCELoss()
   def train_discriminator(optimizer, real_data, fake_data):
     real_labels = real_label(BS)
     fake_labels = fake_label(BS)
@@ -125,27 +123,25 @@ if __name__ == "__main__":
 
     #print("real data", real_data.shape, real_data)
     real_out = discriminator(real_data)
-    print("discrim real out", real_out.shape, real_out)
-    #real_loss = loss_function(real_out, real_labels)
+    #print("discrim real out", real_out.shape, real_out)
     real_loss = (real_out * real_labels).mean()
-    print("real_loss", real_loss)
+    #print("real_loss", real_loss)
 
     fake_out = discriminator(fake_data)
-    #fake_loss = loss_function(fake_out, fake_labels)
     fake_loss = (fake_out * fake_labels).mean()
+    #print("fake_loss", fake_loss)
+    print("total", real_loss.item() + fake_loss.item())
 
     real_loss.backward() 
     fake_loss.backward()
     optimizer.step()
     #print(real_loss.item(), fake_loss.item())
-    exit()
     return real_loss.item() + fake_loss.item()
 
   def train_generator(optimizer, fake_data):
     y = real_label(BS) 
     optimizer.zero_grad()
     out = discriminator(fake_data)
-    #loss = loss_function(out, y)
     loss = (out * y).mean() 
     loss.backward()
     optimizer.step()
@@ -162,13 +158,11 @@ if __name__ == "__main__":
         noise = tensor(np.random.rand(BS, 128)).float().to(device)
         fake_data = generator(noise).detach()
         loss_d_step = train_discriminator(optim_d, real_data, fake_data)
-        print("discriminator loss", loss_d_step)
         loss_d += loss_d_step
       # train generator
       noise = tensor(np.random.rand(BS, 128)).float().to(device)
       fake_data = generator(noise).detach()
       loss_g_step = train_generator(optim_g, fake_data)
-      print("generator loss", loss_g_step)
       loss_g += loss_g_step
 
     losses_g.append(loss_g)
@@ -180,13 +174,15 @@ if __name__ == "__main__":
     plt.figure(figsize=(8,8))
     plt.imshow(fake_images)
     plt.savefig(f"out/images_{epoch}.jpg")
-    plt.close()
+    #plt.close()
 
     epoch_loss_g = loss_g / n_steps
     epoch_loss_d = loss_d / n_steps
     t.set_description("epoch loss_g %.2f loss_d %.2f" % (epoch_loss_g, epoch_loss_d))
 
+  """
   plt.plot(epoch_loss_g)
   plt.plot(epoch_loss_d)
   plt.savefig("loss.png")
   plt.close()
+  """
