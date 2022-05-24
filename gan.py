@@ -80,7 +80,7 @@ class Discriminator(nn.Module):
 """
 
 if __name__ == "__main__":
-  BS = 512
+  BS = 128
   k = 1 
   epochs = 50 #300
   n_steps = int(X_train.shape[0]/BS)
@@ -136,15 +136,12 @@ if __name__ == "__main__":
     real_loss = F.binary_cross_entropy(real_out, real_labels)
     #print("real_loss", real_loss)
 
-    print("fake data", fake_data.shape)
-    fake_out = discriminator(fake_data)
-    print(fake_out.shape)
-    fake_out = fake_out.view(-1)
-    print(fake_out.shape)
+    #fake_data = torch.rand(BS, 1, 28, 28).float().cuda()
+    fake_out = discriminator(fake_data).view(-1)
     #fake_loss = (fake_out * fake_labels).mean()
     fake_loss = F.binary_cross_entropy(fake_out, fake_labels)
     #print("fake_loss", fake_loss)
-    print("total", real_loss.item() + fake_loss.item())
+    #print("total", real_loss.item() + fake_loss.item())
 
     real_loss.backward() 
     fake_loss.backward()
@@ -155,9 +152,9 @@ if __name__ == "__main__":
   def train_generator(optimizer, fake_data):
     y = real_label(BS) 
     optimizer.zero_grad()
-    out = discriminator(fake_data)
+    out = discriminator(fake_data).view(-1)
     #loss = (out * y).mean() 
-    loss = F.binary_loss_entropy(out, y)
+    loss = F.binary_cross_entropy(out, y)
     loss.backward()
     optimizer.step()
     return loss.item()
@@ -166,11 +163,11 @@ if __name__ == "__main__":
   for epoch in (t := trange(epochs)):
     loss_g = 0
     loss_d = 0
-    for i in range(n_steps):
+    for i in trange(n_steps):
       for step in range(k):
         # train discriminator
         real_data = generator_batch()
-        print(real_data.shape)
+        #print(real_data.shape)
         #noise = tensor(np.random.rand(BS, z_dim)).float().to(device)
         noise = tensor(np.random.rand(BS, z_dim, 1, 1)).float().to(device)
 

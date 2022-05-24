@@ -10,20 +10,17 @@ class Generator(nn.Module):
   def __init__(self):
     super(Generator, self).__init__()
     self.layers = nn.Sequential(
-      nn.ConvTranspose2d(z_dim, 28*8, 4, 1, 0, bias=False),
-      nn.BatchNorm2d(28*8), 
-      nn.ReLU(True),
-      nn.ConvTranspose2d(28*8, 28*4, 4, 2, 0, bias=False),
+      nn.ConvTranspose2d(z_dim, 28*4, 4, 1, 0, bias=False),
       nn.BatchNorm2d(28*4), 
       nn.ReLU(True),
-      nn.ConvTranspose2d(28*4, 28*2, 4, 2, 1, bias=False),
+      nn.ConvTranspose2d(28*4, 28*2, 3, 2, 1, bias=False),
       nn.BatchNorm2d(28*2), 
       nn.ReLU(True),
       nn.ConvTranspose2d(28*2, 28, 4, 2, 1, bias=False),
       nn.BatchNorm2d(28), 
       nn.ReLU(True),
       nn.ConvTranspose2d(28, 1, 4, 2, 1, bias=False),
-      nn.Tanh() # [-1, 1]
+      nn.Tanh(), # [-1, 1]
       # n_channels x 28 x 28
     )
 
