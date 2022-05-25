@@ -32,42 +32,49 @@ if __name__ == "__main__":
   generator = Generator().to(device)
   discriminator = Discriminator().to(device)
 
-  optim_g = optim.Adam(generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
-  optim_d = optim.Adam(discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+  optim_g = optim.Adam(generator.parameters(), lr=0.0002)#, betas=(0.5, 0.999))
+  optim_d = optim.Adam(discriminator.parameters(), lr=0.0002)#, betas=(0.5, 0.999))
   #ds_noise = tensor(np.random.randn(64, z_dim).astype(np.float32), requires_grad=False).to(device)
   ds_noise = tensor(np.random.randn(64, z_dim, 1, 1).astype(np.float32), requires_grad=False).to(device)
 
   def generator_batch():
     samp = np.random.randint(0, X_train.shape[0], size=(BS))
-    #image = X_train[samp].reshape(-1, 28*28).astype(np.float32)/255.
-    image = X_train[samp].astype(np.float32)/255.
-    image = (image - 0.5)/0.5
+    image = X_train[samp].astype(np.float32)#/255.
+    #image = (image - 0.5)/0.5
+
     image = image.reshape(-1, 1, 28, 28)
+    """
+    m = x.mean(0, keepdim=True)
+    s = x.std(0, unbiased=False, keepdim=True)
+    x -= m
+    x /= s
+    """
+
     return tensor(image).to(device)
 
-  def train_discriminator(optimizer, real_data, fake_data):
-    optimizer.zero_grad()
+  def train_discriminator(real_data, fake_data):
+    optim_d.zero_grad()
 
     out = discriminator(real_data)
-    y = torch.ones(BS, dtype=torch.float32).to(device)
+    y = torch.ones(BS).float().to(device)
     real_loss = F.binary_cross_entropy(out, y)
+    real_loss.backward() 
 
     out = discriminator(fake_data)
-    y = torch.zeros(BS, dtype=torch.float32).to(device)
+    y = torch.zeros(BS).float().to(device)
     fake_loss = F.binary_cross_entropy(out, y)
-
-    real_loss.backward() 
     fake_loss.backward()
-    optimizer.step()
+
+    optim_d.step()
     return real_loss.item() + fake_loss.item()
 
-  def train_generator(optimizer, fake_data):
-    y = torch.ones(BS, dtype=torch.float32).to(device)
-    optimizer.zero_grad()
+  def train_generator(fake_data):
+    y = torch.ones(BS).float().to(device)
+    optim_g.zero_grad()
     out = discriminator(fake_data)
     loss = F.binary_cross_entropy(out, y)
     loss.backward()
-    optimizer.step()
+    optim_g.step()
     return loss.item()
 
   losses_g, losses_d = [], []
@@ -75,19 +82,18 @@ if __name__ == "__main__":
     loss_g = 0
     loss_d = 0
     for i in trange(n_steps):
-      for step in range(k):
-        # train discriminator
-        real_data = generator_batch()
-        noise = tensor(np.random.rand(BS, z_dim, 1, 1)).float().to(device)
+      # train discriminator
+      real_data = generator_batch()
+      noise = tensor(np.random.rand(BS, z_dim, 1, 1)).float().to(device)
 
-        fake_data = generator(noise).detach()
-        loss_d_step = train_discriminator(optim_d, real_data, fake_data)
-        loss_d += loss_d_step
+      fake_data = generator(noise).detach()
+      loss_d_step = train_discriminator(real_data, fake_data)
+      loss_d += loss_d_step
 
       # train generator
       noise = tensor(np.random.rand(BS, z_dim, 1, 1)).float().to(device)
       fake_data = generator(noise).detach()
-      loss_g_step = train_generator(optim_g, fake_data)
+      loss_g_step = train_generator(fake_data)
       loss_g += loss_g_step
 
     losses_g.append(loss_g)
@@ -105,7 +111,7 @@ if __name__ == "__main__":
 
     epoch_loss_g = loss_g / n_steps
     epoch_loss_d = loss_d / n_steps
-    t.set_description("epoch loss_g %.2f loss_d %.2f" % (epoch_loss_g, epoch_loss_d))
+    t.set_description("epoch loss_g %.4f loss_d %.4f" % (epoch_loss_g, epoch_loss_d))
 
   """
   plt.plot(epoch_loss_g)
