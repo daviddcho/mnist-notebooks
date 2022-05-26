@@ -3,5 +3,5 @@ __pycache__
 *.jpg
 .ipynb_checkpoints/
 notes
-runs
 build
+out

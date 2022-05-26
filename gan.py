@@ -15,8 +15,8 @@ parse = lambda file: np.frombuffer(gzip.open(file).read(), dtype=np.uint8).copy(
 X_train = parse("data/train-images-idx3-ubyte.gz")[0x10:].reshape((-1, 28, 28))
 
 if __name__ == "__main__":
-  batch_size = 128
-  n_epochs = 50
+  batch_size = 256
+  n_epochs = 20
   n_batches = int(X_train.shape[0]/batch_size)
   z_dim = 100
 
@@ -50,13 +50,13 @@ if __name__ == "__main__":
     real_loss = F.binary_cross_entropy(out, y)
     real_loss.backward() 
 
-    out = discriminator(fake_data)
+    out = discriminator(fake_data.detach())
     y = torch.zeros(batch_size).float().to(device)
     fake_loss = F.binary_cross_entropy(out, y)
     fake_loss.backward()
 
     optim_d.step()
-    return real_loss.item() + fake_loss.item()
+    return real_loss + fake_loss
 
   def train_generator(fake_data):
     y = torch.ones(batch_size).float().to(device)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     loss = F.binary_cross_entropy(out, y)
     loss.backward()
     optim_g.step()
-    return loss.item()
+    return loss
 
   def save_fake_images(generator, ds_noise, epoch, path="out"):
     fake_images = generator(ds_noise)
@@ -80,15 +80,15 @@ if __name__ == "__main__":
   for epoch in trange(n_epochs):
     for i in (t := trange(n_batches)):
       # train discriminator
+      """
       optim_d.zero_grad()
-
       real_data = generate_batch()
       y = torch.ones(batch_size).float().to(device)
       out = discriminator(real_data)
       real_loss = loss_function(out, y)
       real_loss.backward() 
 
-      noise = torch.randn(batch_size, z_dim, 1, 1, device=device)
+      noise = torch.randn(batch_size, z_dim, 1, 1).to(device)
       fake_data = generator(noise)
       y = torch.zeros(batch_size).float().to(device)
       out = discriminator(fake_data.detach())
@@ -96,20 +96,30 @@ if __name__ == "__main__":
       fake_loss.backward()
       loss_d = real_loss + fake_loss
       optim_d.step()
+      """
+      real_data = generate_batch()
+      noise = torch.randn(batch_size, z_dim, 1, 1).to(device)
+      fake_data = generator(noise)
+      loss_d = train_discriminator(real_data, fake_data)
 
       # train generator
+      """
       optim_g.zero_grad()
       y = torch.ones(batch_size).float().to(device)
       out = discriminator(fake_data)
       loss_g = loss_function(out, y)
       loss_g.backward()
       optim_g.step()
+      """
+      noise = torch.randn(batch_size, z_dim, 1, 1).to(device)
+      fake_data = generator(noise)
+      loss_g = train_generator(fake_data)
 
       t.set_description("loss_g %.4f loss_d %.4f" % (loss_g.item(), loss_d.item()))
      
-    losses_g.append(loss_g.item())
-    losses_d.append(loss_d.item())
-    save_fake_images(generator, ds_noise, epoch, "out")
+      losses_g.append(loss_g.item())
+      losses_d.append(loss_d.item())
+    save_fake_images(generator, ds_noise, epoch)
     
   plt.plot(losses_g, label="generator loss")
   plt.plot(losses_d, label="discriminator loss")
