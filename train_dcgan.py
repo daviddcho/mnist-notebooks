@@ -8,7 +8,7 @@ from torch import optim, tensor
 import torch.nn.functional as F
 from tqdm import trange
 import matplotlib.pyplot as plt
-from model import Generator, Discriminator
+from dcgan import Generator, Discriminator
 
 # load data
 parse = lambda file: np.frombuffer(gzip.open(file).read(), dtype=np.uint8).copy()
