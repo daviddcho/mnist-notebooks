@@ -27,7 +27,6 @@ z_dim = 100
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("device: ", device)
 
-
 generator = Generator().to(device)
 discriminator = Discriminator().to(device)
 
