@@ -9,7 +9,7 @@ from torch import optim, tensor
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from tqdm import trange
-from dcgan import Generator, Discriminator
+from models.dcgan import Generator, Discriminator
 
 def load_data():
   parse = lambda file: np.frombuffer(gzip.open(file).read(), dtype=np.uint8).copy()
