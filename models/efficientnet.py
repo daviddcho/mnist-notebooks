@@ -2,22 +2,22 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 import math
 
 class SqueezeExcite(nn.Module):
   def __init__(self, out_chs, r_chs):
     super(SqueezeExcite, self).__init__()
-    self.se_reduce = nn.Conv2d(out_chs, r_chs, 1)
-    self.se_expand = nn.Conv2d(r_chs, out_chs, 1)
-    self.swish = nn.SiLU()
+    self.se = nn.Sequential(
+      nn.AdaptiveAvgPool2d(1),
+      nn.Conv2d(out_chs, r_chs, 1), # reduce
+      nn.SiLU(),
+      nn.Conv2d(r_chs, out_chs, 1), # expand
+      nn.Sigmoid()
+    ) 
   
   def forward(self, x):
-    x_squeezed = F.adaptive_avg_pool2d(x, 1)
-    x_squeezed = self.se_reduce(x_squeezed)
-    x_squeezed = self.swish(x_squeezed)
-    x_squeezed = self.se_expand(x_squeezed)
-    x = torch.sigmoid(x_squeezed) * x
-    return x
+    return self.se(x) * x
 
 class MBConvBlock(nn.Module):
   """
@@ -27,53 +27,51 @@ class MBConvBlock(nn.Module):
     super(MBConvBlock, self).__init__()
     out_chs = expand_ratio * input_filters
     if expand_ratio != 1:
-      self.expand_conv = nn.Conv2d(input_filters, out_chs, 1, bias=False)
-      self.bn0 = nn.BatchNorm2d(out_chs)
+      # Expansion
+      self.expand_conv = nn.Sequential(
+        nn.Conv2d(input_filters, out_chs, 1, bias=False),
+        nn.BatchNorm2d(out_chs),
+        nn.SiLU()
+      )
     else:
       self.expand_conv = None
 
-    self.padding = self.get_padding(kernel_size, strides)
-    self.pad2d = nn.ZeroPad2d(self.padding)
-    self.depthwise_conv = nn.Conv2d(out_chs, out_chs, kernel_size, strides, groups=out_chs, bias=False)
-    self.bn1 = nn.BatchNorm2d(out_chs)
+    # Depthwise 
+    padding = self.get_padding(kernel_size, strides)
+    self.depthwise_conv = nn.Sequential( 
+      nn.ZeroPad2d(padding),
+      nn.Conv2d(out_chs, out_chs, kernel_size, strides, groups=out_chs, bias=False),
+      nn.BatchNorm2d(out_chs),
+      nn.SiLU()
+    )
 
     # Squeeze and Excitation
     self.has_se = has_se
     if self.has_se:
       num_squeezed_channels = max(1, int(input_filters * se_ratio))
       self.se_conv = SqueezeExcite(out_chs, num_squeezed_channels)
-      
-    self.project_conv = nn.Conv2d(out_chs, output_filters, 1, bias=False)
-    self.bn2 = nn.BatchNorm2d(output_filters)
-    self.swish = nn.SiLU()
+
+    # Pointwise Convolution
+    self.pointwise_conv = nn.Sequential(
+      nn.Conv2d(out_chs, output_filters, 1, bias=False),
+      nn.BatchNorm2d(output_filters),
+    )
 
   def get_padding(self, kernel_size, strides):
     p = max(kernel_size-1, 0)
-    return [p//2, p-(p//2), p//2, p-(p//2)] 
+    return (p//2, p-(p//2), p//2, p-(p//2))
 
   def forward(self, inputs):
-    # Expansion and Depthwise Convolution
     x = inputs
     if self.expand_conv:
       x = self.expand_conv(x)
-      x = self.bn0(x)
-      x = self.swish(x)
-
-    x = self.pad2d(x)
     x = self.depthwise_conv(x)
-    x = self.bn1(x)
-    x = self.swish(x)
 
-    # Squeeze and Excitation
     if self.has_se:
       x = self.se_conv(x)
-      
-    # Pointwise Convolution
-    x = self.project_conv(x)
-    x = self.bn2(x)
+    x = self.pointwise_conv(x)
 
-    # Skip connection
-    if x.shape == inputs.shape:
+    if x.shape == inputs.shape: # Skip connection
       x = x + inputs
     return x
 
@@ -109,9 +107,12 @@ class EfficientNet(nn.Module):
     
     # Stem
     out_chs = round_filters(32)
-    self.conv_stem = nn.Conv2d(3, out_chs, 3, 2, bias=False)
-    self.bn0 = nn.BatchNorm2d(out_chs)
-    
+    self.conv_stem = nn.Sequential(
+      nn.Conv2d(3, out_chs, 3, 2, bias=False),
+      nn.BatchNorm2d(out_chs),
+      nn.SiLU()
+    )
+
     # num_repeats, kernel_size, strides, expand_ratio, input_filters, output_filters, se_ratio
     block_args = [
       [1, 3, (1,1), 1, 32, 16, 0.25],
@@ -136,9 +137,12 @@ class EfficientNet(nn.Module):
     # Head
     in_chs = round_filters(320)
     out_chs = round_filters(1280)
-    self.conv_head = nn.Conv2d(in_chs, out_chs, kernel_size=1, bias=False)
-    self.bn1 = nn.BatchNorm2d(out_chs, momentum=0.1, eps=1e-5)
-    
+    self.conv_head = nn.Sequential( 
+      nn.Conv2d(in_chs, out_chs, 1, bias=False),
+      nn.BatchNorm2d(out_chs, momentum=0.1, eps=1e-5),
+      nn.SiLU()
+    )
+
     # Final linear layer 
     self.avg_pooling = nn.AdaptiveAvgPool2d(1)
     self.dropout = nn.Dropout(0.2)
@@ -146,11 +150,10 @@ class EfficientNet(nn.Module):
     self.swish = nn.SiLU()
     
   def forward(self, x):
-    x = self.swish(self.bn0(self.conv_stem(x)))
+    x = self.conv_stem(x)
     for block in self.blocks:
       x = block(x)
-
-    x = self.swish(self.bn1(self.conv_head(x)))
+    x = self.conv_head(x)
     x = self.avg_pooling(x)
     x = self.dropout(x)
     x = x.mean([2, 3])
@@ -158,7 +161,8 @@ class EfficientNet(nn.Module):
     return x
 
 if __name__ == "__main__":
-  torch.manual_seed(1229)
+  torch.manual_seed(1227)
+  #np.random.seed(1337)
   model = EfficientNet(number=0, classes=10, has_se=True)
   #x = torch.randn(4, 3, 32, 32)
   #torch.save(x, "tensor.pt")
