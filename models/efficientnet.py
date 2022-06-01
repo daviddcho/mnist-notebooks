@@ -29,8 +29,9 @@ class MBConvBlock(nn.Module):
       self.bn0 = nn.BatchNorm2d(out_chs)
     else:
       self.expand_conv = None
-    self.pad = self.get_padding(kernel_size, strides)
 
+    self.padding = self.get_padding(kernel_size, strides)
+    self.pad2d = nn.ZeroPad2d(self.padding)
     self.depthwise_conv = nn.Conv2d(out_chs, out_chs, kernel_size, strides, groups=out_chs, bias=False)
     self.bn1 = nn.BatchNorm2d(out_chs)
 
@@ -45,32 +46,18 @@ class MBConvBlock(nn.Module):
     self.swish = nn.SiLU()
 
   def get_padding(self, kernel_size, strides):
-    """
-    if strides == (2,2):
-      print("kernel", kernel_size)
-      self.pad = [(kernel_size-1)//2-1, (kernel_size-1)//2]*2
-    else:
-      self.pad = [(kernel_size-1)//2]*4
-    """
     p = max(kernel_size-1, 0)
     return [p//2, p-(p//2), p//2, p-(p//2)] 
-
-  def pad2d(self, x, padding):
-    return x[:, :, -padding[2]:x.shape[2]+padding[3], -padding[0]:x.shape[3]+padding[1]]
 
   def forward(self, inputs):
     # Expansion and Depthwise Convolution
     x = inputs
-    print("start", x.shape, self.expand_conv is None)
     if self.expand_conv:
       x = self.expand_conv(x)
       x = self.bn0(x)
       x = self.swish(x)
 
-    print("before pad", x.shape, self.pad)
-    #x = torch.randn(4, 3, 33, 33)
-    x = self.pad2d(x, self.pad)
-    print("after pad", x.shape)
+    x = self.pad2d(x)
     x = self.depthwise_conv(x)
     x = self.bn1(x)
     x = self.swish(x)
@@ -157,20 +144,23 @@ class EfficientNet(nn.Module):
     self.swish = nn.SiLU()
     
   def forward(self, x):
-    print(x.shape)
     x = self.swish(self.bn0(self.conv_stem(x)))
-    print(x.shape)
     for block in self.blocks:
       x = block(x)
 
     x = self.swish(self.bn1(self.conv_head(x)))
     x = self.avg_pooling(x)
     x = self.dropout(x)
+    x = x.mean([2, 3])
     x = self.fc(x)
     return x
 
 if __name__ == "__main__":
+  torch.manual_seed(1229)
   model = EfficientNet(number=0, classes=10, has_se=False)
-  x = torch.randn(4, 3, 32, 32)
+  #x = torch.randn(4, 3, 32, 32)
+  #torch.save(x, "tensor.pt")
+  x = torch.load("tensor.pt")
+  print(x)
   out = model(x)
   print(out)
