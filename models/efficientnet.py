@@ -6,15 +6,17 @@ import math
 
 class SqueezeExcite(nn.Module):
   def __init__(self, out_chs, r_chs):
+    super(SqueezeExcite, self).__init__()
     self.se_reduce = nn.Conv2d(out_chs, r_chs, 1)
     self.se_expand = nn.Conv2d(r_chs, out_chs, 1)
+    self.swish = nn.SiLU()
   
-  def forward(x):
+  def forward(self, x):
     x_squeezed = F.adaptive_avg_pool2d(x, 1)
     x_squeezed = self.se_reduce(x_squeezed)
     x_squeezed = self.swish(x_squeezed)
     x_squeezed = self.se_expand(x_squeezed)
-    x = F.sigmoid(x_squeezed) * x
+    x = torch.sigmoid(x_squeezed) * x
     return x
 
 class MBConvBlock(nn.Module):
@@ -39,7 +41,7 @@ class MBConvBlock(nn.Module):
     self.has_se = has_se
     if self.has_se:
       num_squeezed_channels = max(1, int(input_filters * se_ratio))
-      self.se_conv = SqueezeExcite(out_chs, num_squeeze_channels)
+      self.se_conv = SqueezeExcite(out_chs, num_squeezed_channels)
       
     self.project_conv = nn.Conv2d(out_chs, output_filters, 1, bias=False)
     self.bn2 = nn.BatchNorm2d(output_filters)
@@ -157,10 +159,9 @@ class EfficientNet(nn.Module):
 
 if __name__ == "__main__":
   torch.manual_seed(1229)
-  model = EfficientNet(number=0, classes=10, has_se=False)
+  model = EfficientNet(number=0, classes=10, has_se=True)
   #x = torch.randn(4, 3, 32, 32)
   #torch.save(x, "tensor.pt")
   x = torch.load("tensor.pt")
-  print(x)
   out = model(x)
   print(out)
