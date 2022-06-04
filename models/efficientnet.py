@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 import io
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import math
-#from ..utils import fetch
 from utils import fetch
 
 class SqueezeExcite(nn.Module):
@@ -174,8 +173,6 @@ class EfficientNet(nn.Module):
 
   def forward(self, x):
     x = self.conv_stem(x)
-    #for block in self.blocks:
-    #  x = block(x)
     x = self.blocks(x)
     x = self.conv_head(x)
     x = self.avg_pooling(x)
