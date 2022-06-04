@@ -5,6 +5,22 @@ import torch.nn.functional as F
 import numpy as np
 import math
 
+def fetch(url):
+  import requests, os, hashlib, tempfile
+  fp = os.path.join(tempfile.gettempdir(), hashlib.md5(url.encode('utf-8')).hexdigest())
+  if os.path.isfile(fp) and os.stat(fp).st_size > 0 and os.getenv("NOCACHE", None) is None:
+    with open(fp, "rb") as f:
+      dat = f.read()
+  else:
+    print("fetching %s" % url)
+    r = requests.get(url)
+    assert r.status_code == 200
+    dat = r.content
+    with open(fp+".tmp", "wb") as f:
+      f.write(dat)
+    os.rename(fp+".tmp", fp)
+  return dat
+
 class SqueezeExcite(nn.Module):
   def __init__(self, out_chs, r_chs):
     super(SqueezeExcite, self).__init__()
@@ -123,16 +139,17 @@ class EfficientNet(nn.Module):
       [4, 5, (2,2), 6, 112, 192, 0.25],
       [1, 3, (1,1), 6, 192, 320, 0.25],
     ]
-    self.blocks = []
     # Build blocks
+    blocks = []
     for b in block_args:
       args = b[1:]
       args[3] = round_filters(args[3])
       args[4] = round_filters(args[4])
       for n in range(round_repeats(b[0])):
-        self.blocks.append(MBConvBlock(*args, has_se=has_se))
+        blocks.append(MBConvBlock(*args, has_se=has_se))
         args[3] = args[4]
         args[1] = (1,1)
+    self.blocks = nn.Sequential(*blocks) 
     
     # Head
     in_chs = round_filters(320)
@@ -148,22 +165,49 @@ class EfficientNet(nn.Module):
     self.dropout = nn.Dropout(0.2)
     self.fc = nn.Linear(out_chs, classes)
     self.swish = nn.SiLU()
-    
+  
   def forward(self, x):
     x = self.conv_stem(x)
-    for block in self.blocks:
-      x = block(x)
+    #for block in self.blocks:
+    #  x = block(x)
+    x = self.blocks(x)
     x = self.conv_head(x)
     x = self.avg_pooling(x)
     x = self.dropout(x)
-    x = x.mean([2, 3])
+    x = x.reshape((-1, x.shape[1]))
     x = self.fc(x)
     return x
 
+def load_from_pretrained(model, n):
+    model_url = [
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth"
+    ][n]
+    import io
+    f = io.BytesIO(fetch(model_url))
+    state_dict = torch.load(f)
+    """
+    x = torch.zeros(model.state_dict()["conv_stem.0.weight"].shape)
+    model.state_dict()["conv_stem.0.weight"].copy_(x)
+    print(model.state_dict()["conv_stem.0.weight"])
+    """
+    my_state = model.state_dict()
+    for (k,_),(_,params) in zip(my_state.items(), state_dict.items()):
+      if "fc" not in k:
+        model.state_dict()[k].copy_(params)
+    #model.load_state_dict(state_dict)
+    return model
+ 
 if __name__ == "__main__":
   torch.manual_seed(1227)
-  #np.random.seed(1337)
   model = EfficientNet(number=0, classes=10, has_se=True)
+  model = load_from_pretrained(model, 0)
   #x = torch.randn(4, 3, 32, 32)
   #torch.save(x, "tensor.pt")
   x = torch.load("tensor.pt")

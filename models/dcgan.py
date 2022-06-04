@@ -48,7 +48,7 @@ class PrintLayer(nn.Module):
     super(PrintLayer, self).__init__()
 
   def forward(self, x):
-    print(f"{x.shape}")
+    print(x.shape)
     return x
 
 if __name__ == "__main__":
