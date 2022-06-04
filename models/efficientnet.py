@@ -1,25 +1,12 @@
 #!/usr/bin/env python3
+import io
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import math
-
-def fetch(url):
-  import requests, os, hashlib, tempfile
-  fp = os.path.join(tempfile.gettempdir(), hashlib.md5(url.encode('utf-8')).hexdigest())
-  if os.path.isfile(fp) and os.stat(fp).st_size > 0 and os.getenv("NOCACHE", None) is None:
-    with open(fp, "rb") as f:
-      dat = f.read()
-  else:
-    print("fetching %s" % url)
-    r = requests.get(url)
-    assert r.status_code == 200
-    dat = r.content
-    with open(fp+".tmp", "wb") as f:
-      f.write(dat)
-    os.rename(fp+".tmp", fp)
-  return dat
+#from ..utils import fetch
+from utils import fetch
 
 class SqueezeExcite(nn.Module):
   def __init__(self, out_chs, r_chs):
@@ -165,7 +152,26 @@ class EfficientNet(nn.Module):
     self.dropout = nn.Dropout(0.2)
     self.fc = nn.Linear(out_chs, classes)
     self.swish = nn.SiLU()
-  
+
+  def load_from_pretrained(self):
+    model_url = [
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth",
+      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth"
+    ][self.number]
+
+    f = io.BytesIO(fetch(model_url))
+    pretrained = torch.load(f)
+    my_state = self.state_dict()
+    for (k,_),(_,params) in zip(my_state.items(), pretrained.items()):
+      if "fc" not in k:
+        my_state[k].copy_(params)
+
   def forward(self, x):
     x = self.conv_stem(x)
     #for block in self.blocks:
@@ -177,39 +183,12 @@ class EfficientNet(nn.Module):
     x = x.reshape((-1, x.shape[1]))
     x = self.fc(x)
     return x
-
-def load_from_pretrained(model, n):
-    model_url = [
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b0-355c32eb.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b1-f1951068.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b2-8bb594d6.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b3-5fb5a3c3.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b4-6ed6700e.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b5-b6417697.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b6-c76e70fd.pth",
-      "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth"
-    ][n]
-    import io
-    f = io.BytesIO(fetch(model_url))
-    state_dict = torch.load(f)
-    """
-    x = torch.zeros(model.state_dict()["conv_stem.0.weight"].shape)
-    model.state_dict()["conv_stem.0.weight"].copy_(x)
-    print(model.state_dict()["conv_stem.0.weight"])
-    """
-    my_state = model.state_dict()
-    for (k,_),(_,params) in zip(my_state.items(), state_dict.items()):
-      if "fc" not in k:
-        model.state_dict()[k].copy_(params)
-    #model.load_state_dict(state_dict)
-    return model
  
 if __name__ == "__main__":
   torch.manual_seed(1227)
   model = EfficientNet(number=0, classes=10, has_se=True)
-  model = load_from_pretrained(model, 0)
+  model.load_from_pretrained()
   #x = torch.randn(4, 3, 32, 32)
-  #torch.save(x, "tensor.pt")
   x = torch.load("tensor.pt")
   out = model(x)
   print(out)
