@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+import os
+import sys 
+sys.path.append(os.path.join(os.getcwd(), 'models'))
+
 import io
 import math
 import torch
@@ -164,10 +168,10 @@ class EfficientNet(nn.Module):
       "https://github.com/lukemelas/EfficientNet-PyTorch/releases/download/1.0/efficientnet-b7-dcc49843.pth"
     ][self.number]
 
-    f = io.BytesIO(fetch(model_url))
-    pretrained = torch.load(f)
+    pretrained = torch.load(io.BytesIO(fetch(model_url)))
     my_state = self.state_dict()
-    for (k,_),(_,params) in zip(my_state.items(), pretrained.items()):
+    for (k,v),(_,params) in zip(my_state.items(), pretrained.items()):
+      #if params.shape == v.shape:
       if "fc" not in k:
         my_state[k].copy_(params)
 
@@ -185,7 +189,6 @@ if __name__ == "__main__":
   torch.manual_seed(1227)
   model = EfficientNet(number=0, classes=10, has_se=True)
   model.load_from_pretrained()
-  #x = torch.randn(4, 3, 32, 32)
-  x = torch.load("tensor.pt")
+  x = torch.randn(4, 3, 32, 32)
   out = model(x)
   print(out)
