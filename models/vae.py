@@ -8,24 +8,28 @@ class VAE(nn.Module):
     super(VAE, self).__init__()
     self.conv = nn.Sequential(
       #PrintLayer(),
-      nn.Conv2d(1, 64, 3, 2, 1),
+      nn.Conv2d(1, 64, 2, 2),
       nn.BatchNorm2d(64), 
       nn.ReLU(),
       #PrintLayer(),
-      nn.Conv2d(64, 128, 3, 2, 1),
+      nn.Conv2d(64, 128, 2, 2),
       nn.BatchNorm2d(128),
       nn.ReLU(),
       #PrintLayer(),
+      nn.Conv2d(128, 256, 4, 2),
+      nn.BatchNorm2d(256),
+      nn.ReLU(),
+      #PrintLayer(),
     )
-    self.fc1 = nn.Linear(6272, zdim)
+    self.fc1 = nn.Linear(1024, zdim)
 
     self.fc2 = nn.Sequential(
-      nn.Linear(zdim, 64*7*7*2),
-      nn.BatchNorm1d(64*7*7*2),
+      nn.Linear(zdim, 1024),
+      nn.BatchNorm1d(1024),
       nn.ReLU(),
     )
     self.conv_transpose = nn.Sequential(
-      nn.ConvTranspose2d(2*7*7*64, 128, 5, 2), 
+      nn.ConvTranspose2d(1024, 128, 5, 2), 
       nn.BatchNorm2d(128),
       nn.ReLU(),
       nn.ConvTranspose2d(128, 64, 5, 2), 
@@ -52,7 +56,6 @@ class VAE(nn.Module):
     return self.decoder(z)
 
 if __name__ == "__main__":
-  device = 'cuda' if torch.cuda.is_available() else 'cpu'
-  vae = VAE().to(device)
+  vae = VAE()
   x = torch.rand(4, 1, 28, 28)
   out = vae(x)
