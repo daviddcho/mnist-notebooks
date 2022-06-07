@@ -32,8 +32,8 @@ class MBConvBlock(nn.Module):
   def __init__(self, kernel_size, strides, expand_ratio, input_filters, output_filters, se_ratio, has_se):
     super(MBConvBlock, self).__init__()
     out_chs = expand_ratio * input_filters
+    # Expansion
     if expand_ratio != 1:
-      # Expansion
       self.expand_conv = nn.Sequential(
         nn.Conv2d(input_filters, out_chs, 1, bias=False),
         nn.BatchNorm2d(out_chs),
@@ -99,9 +99,8 @@ class EfficientNet(nn.Module):
       (4.3, 5.3), # l2
     ][number]
     
-    def round_filters(filters, divisor=8):
-      """Round number of filters based on depth multiplier"""
-      multiplier = global_params[0]
+    def round_filters(filters):
+      multiplier, divisor = global_params[0], 8
       filters *= multiplier 
       new_filters = max(divisor, int(filters + divisor/2) // divisor*divisor)
       if new_filters < 0.9 * filters: # prevent rounding by more than 10%
@@ -129,16 +128,13 @@ class EfficientNet(nn.Module):
       [4, 5, (2,2), 6, 112, 192, 0.25],
       [1, 3, (1,1), 6, 192, 320, 0.25],
     ]
-    # Build blocks
     blocks = []
-    for b in block_args:
-      args = b[1:]
-      args[3] = round_filters(args[3])
-      args[4] = round_filters(args[4])
-      for n in range(round_repeats(b[0])):
-        blocks.append(MBConvBlock(*args, has_se=has_se))
-        args[3] = args[4]
-        args[1] = (1,1)
+    for num_repeats, kernel_size, strides, expand_ratio, input_filters, output_filters, se_ratio in block_args:
+      input_filters, output_filters = round_filters(input_filters), round_filters(output_filters)
+      for n in range(round_repeats(num_repeats)):
+        blocks.append(MBConvBlock(kernel_size, strides, expand_ratio, input_filters, output_filters, se_ratio, has_se=has_se))
+        input_filters = output_filters
+        strides = (1,1)
     self.blocks = nn.Sequential(*blocks) 
     
     # Head
@@ -171,8 +167,7 @@ class EfficientNet(nn.Module):
     pretrained = torch.load(io.BytesIO(fetch(model_url)))
     my_state = self.state_dict()
     for (k,v),(_,params) in zip(my_state.items(), pretrained.items()):
-      #if params.shape == v.shape:
-      if "fc" not in k:
+      if v.shape == params.shape:
         my_state[k].copy_(params)
 
   def forward(self, x):
