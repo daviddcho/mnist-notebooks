@@ -30,8 +30,11 @@ print("device: ", device)
 generator = Generator().to(device)
 discriminator = Discriminator().to(device)
 
-optim_g = optim.Adam(generator.parameters(), lr=0.0002)
-optim_d = optim.Adam(discriminator.parameters(), lr=0.0002)
+import apex
+optim_g = apex.optimizers.FusedAdam(generator.parameters(), lr=0.0002)
+optim_d = apex.optimizers.FusedAdam(discriminator.parameters(), lr=0.0002)
+#optim_g = optim.Adam(generator.parameters(), lr=0.0002)
+#optim_d = optim.Adam(discriminator.parameters(), lr=0.0002)
 fixed_noise = torch.randn(64, 100, 1, 1, device=device)
 
 def generate_batch():

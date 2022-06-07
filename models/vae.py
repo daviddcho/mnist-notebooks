@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 #from dcgan import PrintLayer
 
+# https://arxiv.org/pdf/1312.6114.pdf
 class VAE(nn.Module):
   def __init__(self, zdim=4):
     super(VAE, self).__init__()
