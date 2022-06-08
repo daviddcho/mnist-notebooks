@@ -41,6 +41,7 @@ for epoch in trange(n_epochs):
     t.set_description(f"loss {loss:.2f}")
 
   with torch.no_grad():
+    # if you sample from mnist distribution, better results
     X = torch.randn(64, 1, 28, 28).float().to(device)
     images, _, _ = model(X)
     images = images.cpu().detach().numpy().reshape(-1, 28, 28)
